@@ -1,0 +1,10 @@
+{
+  "name": "ErgoVision AI - Worker Ergonomics & Safety Monitoring",
+  "description": "Industry 5.0 AI-driven computer vision system for real-time worker ergonomics, RULA/REBA posture scoring, fatigue tracking, and safety boundary monitoring.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

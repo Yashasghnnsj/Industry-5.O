@@ -1,66 +1,88 @@
 """
 Biomechanical 3D Geometry and Vector Mathematics Module
-Supports both NumPy and pure Python math for zero-dependency portability.
+Leverages NumPy and SciPy for robust 3D vector geometry, kinematic angles,
+spatial transformations, smoothing filters, and polygon collision detection.
 """
 import math
+import numpy as np
+from typing import Tuple, List, Optional, Union
 
 try:
-    import numpy as np
-    HAS_NUMPY = True
+    from scipy.spatial.transform import Rotation
+    HAS_SCIPY = True
 except ImportError:
-    HAS_NUMPY = False
+    HAS_SCIPY = False
 
-def calculate_angle_3d(a, b, c) -> float:
+
+def vector_norm(v: np.ndarray) -> float:
+    """Calculates Euclidean L2 norm of a vector."""
+    return float(np.linalg.norm(v))
+
+
+def calculate_angle_3d(a: Union[List[float], np.ndarray], 
+                       b: Union[List[float], np.ndarray], 
+                       c: Union[List[float], np.ndarray]) -> float:
     """
     Computes 3D angle (in degrees) at vertex B between vectors BA and BC.
     cos(theta) = (BA . BC) / (|BA| * |BC|)
     """
-    ax, ay = a[0], a[1]
-    bx, by = b[0], b[1]
-    cx, cy = c[0], c[1]
-    az = a[2] if len(a) > 2 else 0.0
-    bz = b[2] if len(b) > 2 else 0.0
-    cz = c[2] if len(c) > 2 else 0.0
+    a_arr = np.asarray(a, dtype=np.float64)[:3]
+    b_arr = np.asarray(b, dtype=np.float64)[:3]
+    c_arr = np.asarray(c, dtype=np.float64)[:3]
 
-    bax = ax - bx
-    bay = ay - by
-    baz = az - bz
+    ba = a_arr - b_arr
+    bc = c_arr - b_arr
 
-    bcx = cx - bx
-    bcy = cy - by
-    bcz = cz - bz
+    norm_ba = np.linalg.norm(ba)
+    norm_bc = np.linalg.norm(bc)
 
-    dot = bax * bcx + bay * bcy + baz * bcz
-    norm_ba = math.sqrt(bax * bax + bay * bay + baz * baz)
-    norm_bc = math.sqrt(bcx * bcx + bcy * bcy + bcz * bcz)
-
-    if norm_ba < 1e-6 or norm_bc < 1e-6:
+    if norm_ba < 1e-7 or norm_bc < 1e-7:
         return 0.0
 
-    cos_val = max(-1.0, min(1.0, dot / (norm_ba * norm_bc)))
-    return float(math.degrees(math.acos(cos_val)))
+    dot = np.dot(ba, bc)
+    cos_val = np.clip(dot / (norm_ba * norm_bc), -1.0, 1.0)
+    return float(np.degrees(np.arccos(cos_val)))
 
-def calculate_vertical_inclination(top, bottom) -> float:
+
+def calculate_vertical_inclination(top: Union[List[float], np.ndarray], 
+                                   bottom: Union[List[float], np.ndarray]) -> float:
     """
-    Computes inclination angle (in degrees) of a body segment relative to vertical [0, -1].
-    Upright vertical corresponds to 0 degrees.
+    Computes inclination angle (in degrees) of a body segment relative to vertical gravity vector [0, -1, 0].
+    Upright posture corresponds to 0 degrees.
     """
-    dx = top[0] - bottom[0]
-    dy = top[1] - bottom[1]
+    top_arr = np.asarray(top, dtype=np.float64)[:3]
+    bottom_arr = np.asarray(bottom, dtype=np.float64)[:3]
 
-    # In screen coordinates, up is -y, so upward vector is [0, -1]
-    dot = dy * -1.0
-    norm = math.sqrt(dx * dx + dy * dy)
+    seg = top_arr - bottom_arr
+    
+    # In normalized camera/screen space, down is +y, up is -y.
+    # Vertical upward vector is [0, -1, 0]
+    up_vector = np.array([0.0, -1.0, 0.0], dtype=np.float64)
+    if len(seg) == 2:
+        up_vector = up_vector[:2]
 
-    if norm < 1e-6:
+    norm_seg = np.linalg.norm(seg)
+    if norm_seg < 1e-7:
         return 0.0
 
-    cos_val = max(-1.0, min(1.0, dot / norm))
-    return float(math.degrees(math.acos(cos_val)))
+    dot = np.dot(seg, up_vector)
+    cos_val = np.clip(dot / norm_seg, -1.0, 1.0)
+    return float(np.degrees(np.arccos(cos_val)))
 
-def point_in_polygon(point: tuple, polygon: list) -> bool:
+
+def calculate_sagittal_inclination(p1: np.ndarray, p2: np.ndarray) -> float:
     """
-    Ray-casting algorithm to test if (x, y) is inside a polygon [(x1, y1), (x2, y2), ...]
+    Computes sagittal forward/backward bending angle (in Y-Z projection).
+    """
+    dy = p1[1] - p2[1]
+    dz = (p1[2] - p2[2]) if len(p1) > 2 else 0.0
+    return float(np.degrees(np.arctan2(abs(dz), abs(dy) + 1e-7)))
+
+
+def point_in_polygon(point: Tuple[float, float], polygon: List[Tuple[float, float]]) -> bool:
+    """
+    Ray-casting algorithm to test if a 2D normalized coordinate (x, y) 
+    lies within a polygon [(x1, y1), (x2, y2), ...].
     """
     x, y = point[0], point[1]
     inside = False
@@ -82,22 +104,16 @@ def point_in_polygon(point: tuple, polygon: list) -> bool:
         p1x, p1y = p2x, p2y
     return inside
 
-def smooth_landmarks(current, previous, alpha: float = 0.65):
-    """
-    Exponential moving average filter to remove tracking jitter.
-    """
-    if previous is None or len(previous) != len(current):
-        return current
 
-    smoothed = []
-    for c, p in zip(current, previous):
-        cx, cy = c[0], c[1]
-        px, py = p[0], p[1]
-        cz = c[2] if len(c) > 2 else 0.0
-        pz = p[2] if len(p) > 2 else 0.0
-        smoothed.append([
-            alpha * cx + (1.0 - alpha) * px,
-            alpha * cy + (1.0 - alpha) * py,
-            alpha * cz + (1.0 - alpha) * pz,
-        ])
-    return smoothed
+def smooth_landmarks(current: np.ndarray, 
+                     previous: Optional[np.ndarray], 
+                     alpha: float = 0.70) -> np.ndarray:
+    """
+    Exponential Moving Average (EMA) filter across 33 3D landmarks
+    to eliminate frame-to-frame computer vision jitter while preserving rapid biomechanical transitions.
+    """
+    if previous is None or current.shape != previous.shape:
+        return current.copy()
+
+    # EMA: y[t] = alpha * x[t] + (1 - alpha) * y[t-1]
+    return alpha * current + (1.0 - alpha) * previous

@@ -2,8 +2,14 @@
 Main Entry Point for Python Ergonomics Engine
 Can run as a standalone CLI processor, multi-threaded video analyzer, or backend worker.
 """
-import sys
 import os
+import sys
+
+# Suppress verbose TensorFlow / MediaPipe C++ loggers
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["GLOG_minloglevel"] = "3"
+
 import time
 import json
 import argparse
@@ -12,15 +18,16 @@ import numpy as np
 import db_manager
 from pose_pipeline import PoseProcessor
 
+
 def process_video_file(video_path: str, output_path: str = None, load_kg: float = 5.0):
     """
-    Ingests an .mp4 video file, processes frames multi-threaded or sequentially,
+    Ingests an .mp4 video file, processes frames frame-by-frame,
     extracts 33 landmarks, computes RULA/REBA, and persists telemetry to SQLite.
     """
     try:
         import cv2
     except ImportError:
-        print("[!] OpenCV not available. Simulating frame-by-frame analysis.")
+        print("[!] OpenCV not available.")
         return
 
     if not os.path.exists(video_path):
@@ -84,6 +91,7 @@ def process_video_file(video_path: str, output_path: str = None, load_kg: float 
     stats = db_manager.get_shift_statistics()
     print("\n--- Shift Ergonomics Summary (from ergonomics.db) ---")
     print(json.dumps(stats, indent=2))
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ErgoVision AI - Worker Ergonomics & Safety Monitoring")

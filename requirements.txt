@@ -1,0 +1,10 @@
+# ErgoVision AI - Industry 5.0 Real-Time Worker Ergonomics & Safety Monitoring
+# Python 3.10+ Dependencies
+
+streamlit>=1.30.0
+opencv-python>=4.8.0
+mediapipe>=0.10.14
+numpy>=1.24.0,<2.0.0
+scipy>=1.10.0
+pandas>=2.0.0
+plotly>=5.18.0
